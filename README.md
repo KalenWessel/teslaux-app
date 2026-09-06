@@ -19,24 +19,29 @@ TeslAux has been tested with:
 
 ## Install
 
-1. Download the latest APK from
-   [GitHub Releases](https://github.com/KalenWessel/teslaux-app/releases/latest).
-2. Allow installation from unknown sources when Android prompts.
-3. Install and open TeslAux.
-4. Allow restricted settings for the sideloaded app:
-   - Open **Settings → Apps → TeslAux**.
-   - Open the three-dot menu in the upper-right.
-   - Select **Allow restricted settings**.
-5. Return to TeslAux, tap **Enable notification access**, and grant access.
-6. Confirm Screenmate Wi-Fi Audio is enabled.
-7. Tap **Verify wheel controls**, then press the steering-wheel play/pause
+Install TeslAux through Obtainium. Its session-based installer allows
+Notification Access without ADB, unlike opening a downloaded TeslAux APK
+directly on Screenmate.
+
+1. On Screenmate, open the
+   [latest Obtainium release](https://github.com/ImranR98/Obtainium/releases/latest).
+2. Download and install `app-arm64-v8a-release.apk`. Allow installation from
+   unknown sources if Android prompts.
+3. Open Obtainium and select **Add App**.
+4. Enter `https://github.com/KalenWessel/teslaux-app` as the app source.
+5. Add TeslAux, then install its latest release through Obtainium.
+6. Open TeslAux, tap **Enable notification access**, and grant access.
+7. Confirm Screenmate Wi-Fi Audio is enabled.
+8. Tap **Verify wheel controls**, then press the steering-wheel play/pause
    button within ten seconds.
 
-The bridge starts automatically after installation and at boot.
+Obtainium can also detect and install future TeslAux releases. The bridge starts
+automatically after installation and at boot.
 
-Android applies the restricted-settings requirement to sensitive permissions
-for apps installed outside an app store. If the Notification Access switch is
-disabled, confirm step 4 was completed.
+Do not install the TeslAux APK directly from a browser or file manager.
+Android 14 marks Notification Access as restricted for that installation
+method, and Screenmate's customized Settings app does not expose the standard
+**Allow restricted settings** option.
 
 ## Status and troubleshooting
 
