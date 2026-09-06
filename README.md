@@ -23,12 +23,20 @@ TeslAux has been tested with:
    [GitHub Releases](https://github.com/KalenWessel/teslaux-app/releases/latest).
 2. Allow installation from unknown sources when Android prompts.
 3. Install and open TeslAux.
-4. Tap **Enable notification access** and grant access to TeslAux.
-5. Confirm Screenmate Wi-Fi Audio is enabled.
-6. Tap **Verify wheel controls**, then press the steering-wheel play/pause
+4. Allow restricted settings for the sideloaded app:
+   - Open **Settings → Apps → TeslAux**.
+   - Open the three-dot menu in the upper-right.
+   - Select **Allow restricted settings**.
+5. Return to TeslAux, tap **Enable notification access**, and grant access.
+6. Confirm Screenmate Wi-Fi Audio is enabled.
+7. Tap **Verify wheel controls**, then press the steering-wheel play/pause
    button within ten seconds.
 
 The bridge starts automatically after installation and at boot.
+
+Android applies the restricted-settings requirement to sensitive permissions
+for apps installed outside an app store. If the Notification Access switch is
+disabled, confirm step 4 was completed.
 
 ## Status and troubleshooting
 
