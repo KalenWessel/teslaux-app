@@ -60,12 +60,13 @@ public final class MainActivity extends Activity {
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setBackgroundColor(Color.rgb(16, 21, 25));
+        scrollView.setFillViewport(true);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(dp(24), dp(24), dp(24), dp(24));
         scrollView.addView(layout, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         TextView title = new TextView(this);
         title.setText("TeslAux");
@@ -152,6 +153,17 @@ public final class MainActivity extends Activity {
         instructions.setTextColor(Color.rgb(155, 165, 173));
         instructions.setTextSize(14);
         layout.addView(instructions);
+
+        View spacer = new View(this);
+        layout.addView(spacer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        TextView version = new TextView(this);
+        version.setText("Version " + BuildConfig.VERSION_NAME);
+        version.setTextColor(Color.rgb(120, 130, 138));
+        version.setTextSize(12);
+        version.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        layout.addView(version);
 
         setContentView(scrollView);
         requestNotificationPermission();
