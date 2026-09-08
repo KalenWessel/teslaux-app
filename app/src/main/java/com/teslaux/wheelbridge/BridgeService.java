@@ -15,7 +15,9 @@ import android.media.session.MediaController;
 import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -42,9 +44,11 @@ public final class BridgeService extends Service {
     private static final String CHANNEL_ID = "wheel_bridge";
     private static final int NOTIFICATION_ID = 1;
     private static final int RECONNECT_DELAY_MS = 2_000;
+    private static final int PRIORITY_RECLAIM_DELAY_MS = 250;
     private static final String TAG = "TeslAuxWheelBridge";
 
     private final AtomicBoolean running = new AtomicBoolean();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private volatile String lastStatus;
     private MediaSession mediaSession;
     private AudioTrack silentAudioTrack;
@@ -72,6 +76,7 @@ public final class BridgeService extends Service {
     @Override
     public void onDestroy() {
         running.set(false);
+        mainHandler.removeCallbacksAndMessages(null);
         closeSocket();
         stopSilentPlayback();
         if (mediaSession != null) {
@@ -134,6 +139,7 @@ public final class BridgeService extends Service {
             mediaSession.setActive(true);
         }
         startSilentPlayback();
+        reclaimMediaButtonPriority();
         setStatus("Connected — wheel controls active");
 
         try {
@@ -172,7 +178,10 @@ public final class BridgeService extends Service {
             return;
         }
         track.setLoopPoints(0, frameCount, -1);
-        track.setVolume(0f);
+        // The samples are already all zero. Setting volume to zero additionally marks the
+        // AudioTrack as client-muted, causing Android to ignore it when choosing which media
+        // session receives hardware buttons.
+        track.setVolume(1f);
         track.play();
         silentAudioTrack = track;
     }
@@ -209,14 +218,25 @@ public final class BridgeService extends Service {
             @Override
             public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
                 KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
-                if (event == null || event.getAction() != KeyEvent.ACTION_DOWN) {
+                if (event == null) {
                     return true;
                 }
-                getPreferences().edit()
-                        .putLong(KEY_LAST_WHEEL_EVENT_AT, System.currentTimeMillis())
-                        .putString(KEY_LAST_WHEEL_EVENT, KeyEvent.keyCodeToString(event.getKeyCode()))
-                        .apply();
-                return forwardToActivePlayer(event.getKeyCode());
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    getPreferences().edit()
+                            .putLong(KEY_LAST_WHEEL_EVENT_AT, System.currentTimeMillis())
+                            .putString(
+                                    KEY_LAST_WHEEL_EVENT,
+                                    KeyEvent.keyCodeToString(event.getKeyCode()))
+                            .apply();
+                    // Consume DOWN without forwarding. Forwarding here promotes the target player
+                    // before Screenmate dispatches UP, allowing that UP to leak directly to the
+                    // player and immediately reverse a play/pause command.
+                    return true;
+                }
+                if (event.getAction() == KeyEvent.ACTION_UP) {
+                    return forwardToActivePlayer(event.getKeyCode());
+                }
+                return true;
             }
         });
     }
@@ -286,7 +306,30 @@ public final class BridgeService extends Service {
         String player = controller.getPackageName();
         Log.i(TAG, "Forwarded media key " + keyCode + " to " + player);
         setStatus("Connected — sent " + KeyEvent.keyCodeToString(keyCode) + " to " + player);
+        reclaimMediaButtonPriority();
         return true;
+    }
+
+    private void reclaimMediaButtonPriority() {
+        mainHandler.postDelayed(() -> {
+            if (!running.get() || mediaSession == null) {
+                return;
+            }
+
+            AudioTrack track = silentAudioTrack;
+            if (track != null) {
+                try {
+                    // Android assigns media buttons to the most recently active playback UID.
+                    // Forwarding a command activates the target player, so transition our silent
+                    // track after it has handled the command to make TeslAux the recipient again.
+                    track.pause();
+                    track.play();
+                } catch (IllegalStateException e) {
+                    Log.w(TAG, "Could not reclaim audio playback priority", e);
+                }
+            }
+            Log.i(TAG, "Reclaimed media-button priority");
+        }, PRIORITY_RECLAIM_DELAY_MS);
     }
 
     private void performHandshake(InputStream input, OutputStream output) throws IOException {
