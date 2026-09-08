@@ -199,8 +199,10 @@ public final class MainActivity extends Activity {
                 preferences.getLong(BridgeService.KEY_LAST_WHEEL_EVENT_AT, 0);
         String lastWheelEvent =
                 preferences.getString(BridgeService.KEY_LAST_WHEEL_EVENT, "");
-        boolean wheelVerified =
-                connected && connectedAt > 0 && lastWheelEventAt >= connectedAt;
+        // Verification is an installation-level setup check, not a connection health check.
+        // Screenmate reconnects after a vehicle reboot, but that should not invalidate a
+        // previously successful wheel-control test.
+        boolean wheelVerified = connected && lastWheelEventAt > 0;
 
         if (verificationFailed && connectedAt != verificationConnectionAt) {
             verificationFailed = false;
@@ -235,7 +237,7 @@ public final class MainActivity extends Activity {
 
         boolean everythingWorking = connected && notificationEnabled && wheelVerified;
         if (everythingWorking) {
-            setStatus(overallStatus, "● Everything is working", true);
+            setStatus(overallStatus, "● Ready", true);
         } else if (connected && verificationFailed) {
             setStatus(overallStatus,
                     "● Restart Screenmate",

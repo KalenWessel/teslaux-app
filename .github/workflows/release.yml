@@ -33,7 +33,11 @@ jobs:
             echo "Tag must contain a semantic version, for example v1.0.0" >&2
             exit 1
           fi
+          base_version="${version%%[-+]*}"
+          IFS=. read -r major minor patch <<< "$base_version"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
           echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
 
       - name: Decode release keystore
         shell: bash
@@ -55,7 +59,7 @@ jobs:
         run: |
           ./gradlew lintRelease assembleRelease \
             -PappVersionName="${{ steps.version.outputs.value }}" \
-            -PappVersionCode="${{ github.run_number }}"
+            -PappVersionCode="${{ steps.version.outputs.code }}"
 
       - name: Prepare release files
         shell: bash

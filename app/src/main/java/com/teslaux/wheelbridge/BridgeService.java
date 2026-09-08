@@ -18,6 +18,7 @@ import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Base64;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -280,12 +281,22 @@ public final class BridgeService extends Service {
         MediaController.TransportControls controls = controller.getTransportControls();
         switch (keyCode) {
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                PlaybackState state = controller.getPlaybackState();
-                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                    controls.pause();
-                } else {
-                    controls.play();
-                }
+                // Some head units always expose STATE_STOPPED even while projected media is
+                // playing. Send the toggle key directly so the player decides whether to play or
+                // pause instead of guessing from an unreliable playback state.
+                long eventTime = SystemClock.uptimeMillis();
+                controller.dispatchMediaButtonEvent(new KeyEvent(
+                        eventTime,
+                        eventTime,
+                        KeyEvent.ACTION_DOWN,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                        0));
+                controller.dispatchMediaButtonEvent(new KeyEvent(
+                        eventTime,
+                        eventTime,
+                        KeyEvent.ACTION_UP,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                        0));
                 break;
             case KeyEvent.KEYCODE_MEDIA_PLAY:
                 controls.play();
