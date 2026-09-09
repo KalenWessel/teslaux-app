@@ -1,5 +1,10 @@
 # TeslAux
 
+> **Note:** This application is a companion app for the
+> [TeslAux project](https://github.com/jbschooley/TeslAux/tree/main). It makes
+> TeslAux more usable with Screenmate because, without this app, the Tesla
+> steering wheel media buttons do not control playback.
+
 TeslAux enables Tesla steering-wheel media buttons on a Screenmate Android
 device. It keeps Screenmate's local Wi-Fi Audio consumer active, receives media
 commands through an Android media session, and forwards them to the active
@@ -13,7 +18,7 @@ TeslAux has been tested with:
 
 ## Requirements
 
-- A Screenmate running Android 12 or newer
+- A Screenmate
 - Screenmate Wi-Fi Audio enabled
 - Notification Access granted to TeslAux
 
@@ -79,8 +84,7 @@ GitHub Releases.
 
 ## Disclaimer
 
-TeslAux is an independent, unofficial project. It is not affiliated with or
-endorsed by Tesla, Teslogic, Screenmate, Spotify, Google, or VideoLAN.
+TeslAux is not affiliated with Tesla, Teslogic, or Screenmate.
 
 ## License
 
