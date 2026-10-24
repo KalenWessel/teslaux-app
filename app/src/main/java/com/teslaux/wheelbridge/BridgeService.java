@@ -9,7 +9,10 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
@@ -47,6 +50,10 @@ public final class BridgeService extends Service {
     private static final int RECONNECT_DELAY_MS = 2_000;
     private static final int PRIORITY_RECLAIM_DELAY_MS = 250;
     private static final String TAG = "TeslAuxWheelBridge";
+    private static final String USB_AUDIO_PRODUCT = "TeslAux";
+    // Routing to a re-enumerated USB audio device can settle after it is reported, and the
+    // volume applies to whichever output is active at that moment, so repeat the set.
+    private static final int[] MUSIC_VOLUME_DELAYS_MS = {0, 1_000, 3_000, 6_000};
 
     private final AtomicBoolean running = new AtomicBoolean();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -55,12 +62,32 @@ public final class BridgeService extends Service {
     private AudioTrack silentAudioTrack;
     private volatile Socket socket;
     private Thread worker;
+    private AudioManager audioManager;
+    private final Runnable setMaxMusicVolume = () -> audioManager.setStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            0);
+    private final AudioDeviceCallback usbAudioCallback = new AudioDeviceCallback() {
+        @Override
+        public void onAudioDevicesAdded(AudioDeviceInfo[] devices) {
+            for (AudioDeviceInfo device : devices) {
+                if (device.isSink()
+                        && device.getType() == AudioDeviceInfo.TYPE_USB_DEVICE
+                        && String.valueOf(device.getProductName()).contains(USB_AUDIO_PRODUCT)) {
+                    scheduleMaxMusicVolume();
+                    return;
+                }
+            }
+        }
+    };
 
     @Override
     public void onCreate() {
         super.onCreate();
+        audioManager = getSystemService(AudioManager.class);
         createNotificationChannel();
         createMediaSession();
+        audioManager.registerAudioDeviceCallback(usbAudioCallback, mainHandler);
     }
 
     @Override
@@ -77,6 +104,7 @@ public final class BridgeService extends Service {
     @Override
     public void onDestroy() {
         running.set(false);
+        audioManager.unregisterAudioDeviceCallback(usbAudioCallback);
         mainHandler.removeCallbacksAndMessages(null);
         closeSocket();
         stopSilentPlayback();
@@ -96,6 +124,13 @@ public final class BridgeService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void scheduleMaxMusicVolume() {
+        mainHandler.removeCallbacks(setMaxMusicVolume);
+        for (int delay : MUSIC_VOLUME_DELAYS_MS) {
+            mainHandler.postDelayed(setMaxMusicVolume, delay);
+        }
     }
 
     private void connectionLoop() {
