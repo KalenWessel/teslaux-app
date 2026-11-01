@@ -10,12 +10,18 @@ Screenmate comes up at the default after a reboot, which is quieter than the car
 needs. The app watches for the TeslAux sound card and sets the volume when it
 appears, including the reconnection a few seconds after boot.
 
-Steering-wheel media buttons are handled by Screenmate itself (1.1.0b and
-later), so this app no longer bridges them.
+Steering-wheel media buttons are handled by Screenmate itself (1.1.x), so this
+app no longer bridges them.
+
+## Compatibility
+
+Compatible with Screenmate OS 1.1.x, tested on 1.1.0b (build
+`AP2A.240805.005.S4`). Screenmate 1.1.x handles the steering-wheel media
+buttons, so TeslAux only manages volume.
 
 ## Requirements
 
-- A Screenmate
+- A Screenmate running 1.1.x
 - A TeslAux USB audio device
 
 ## Install
