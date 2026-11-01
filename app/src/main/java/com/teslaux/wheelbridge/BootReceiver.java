@@ -12,10 +12,6 @@ public final class BootReceiver extends BroadcastReceiver {
                 && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
             return;
         }
-        boolean enabled = context.getSharedPreferences(BridgeService.PREFS, Context.MODE_PRIVATE)
-                .getBoolean(BridgeService.KEY_ENABLED, false);
-        if (enabled) {
-            context.startForegroundService(new Intent(context, BridgeService.class));
-        }
+        context.startForegroundService(new Intent(context, VolumeService.class));
     }
 }
