@@ -1,437 +1,116 @@
 package com.teslaux.wheelbridge;
 
-import android.Manifest;
 import android.app.Activity;
-import android.content.ComponentName;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.media.MediaMetadata;
-import android.media.session.MediaController;
-import android.media.session.MediaSessionManager;
-import android.media.session.PlaybackState;
-import android.os.Build;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.provider.Settings;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
+/**
+ * Status screen. The app has no settings: it runs a background service that keeps the music
+ * volume at maximum for the TeslAux USB audio device.
+ */
 public final class MainActivity extends Activity {
-    private static final long WHEEL_TEST_TIMEOUT_MS = 10_000;
+    private static final int TEXT = Color.parseColor("#E8EDF2");
+    private static final int MUTED = Color.parseColor("#8A97A3");
+    private static final int OK = Color.parseColor("#5ED08A");
+    private static final int WARN = Color.parseColor("#E0A64A");
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView overallStatus;
-    private TextView bridgeStatus;
-    private TextView audioStatus;
-    private TextView wheelStatus;
-    private TextView notificationStatus;
-    private TextView playerStatus;
-    private Button notificationAccess;
-    private Button verifyWheel;
-    private long verificationStartedAt;
-    private long verificationConnectionAt;
-    private boolean verificationFailed;
-    private String verificationPlayerFingerprint;
-
-    private final Runnable refreshStatus = new Runnable() {
-        @Override
-        public void run() {
-            renderStatus();
-            handler.postDelayed(this, 1_000);
-        }
-    };
+    private TextView deviceRow;
+    private TextView volumeRow;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setBackgroundColor(Color.rgb(16, 21, 25));
-        scrollView.setFillViewport(true);
-
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(24), dp(24), dp(24), dp(24));
-        scrollView.addView(layout, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(32), dp(32), dp(32), dp(32));
+        root.setBackgroundColor(Color.parseColor("#101519"));
 
         TextView title = new TextView(this);
         title.setText("TeslAux");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(26);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        layout.addView(title);
+        title.setTextColor(TEXT);
+        title.setTextSize(28);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(title);
 
-        TextView explanation = new TextView(this);
-        explanation.setText("Control media via the steering wheel input buttons.");
-        explanation.setTextColor(Color.rgb(185, 193, 199));
-        explanation.setTextSize(16);
-        LinearLayout.LayoutParams explanationParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        explanationParams.setMargins(0, dp(12), 0, dp(20));
-        layout.addView(explanation, explanationParams);
+        TextView body = new TextView(this);
+        body.setText("Keeps the music volume at maximum while the TeslAux USB audio device"
+                + " is the output.\n\nSteering-wheel media buttons are handled by Screenmate"
+                + " itself, so this app only manages volume.");
+        body.setTextColor(MUTED);
+        body.setTextSize(16);
+        body.setPadding(0, dp(12), 0, dp(28));
+        root.addView(body);
 
-        LinearLayout statusCard = new LinearLayout(this);
-        statusCard.setOrientation(LinearLayout.VERTICAL);
-        statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
-        GradientDrawable cardBackground = new GradientDrawable();
-        cardBackground.setColor(Color.rgb(28, 35, 41));
-        cardBackground.setCornerRadius(dp(14));
-        cardBackground.setStroke(dp(1), Color.rgb(64, 74, 82));
-        statusCard.setBackground(cardBackground);
+        deviceRow = row(root, dp(6));
+        volumeRow = row(root, dp(6));
 
-        TextView statusTitle = new TextView(this);
-        statusTitle.setText("Status");
-        statusTitle.setTextColor(Color.WHITE);
-        statusTitle.setTextSize(17);
-        statusTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        statusCard.addView(statusTitle);
+        Button apply = new Button(this);
+        apply.setText("Set volume now");
+        apply.setOnClickListener(v -> {
+            VolumeService.applyMaxMusicVolume(getSystemService(AudioManager.class));
+            render();
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(28);
+        root.addView(apply, params);
 
-        overallStatus = statusRow(true);
-        overallStatus.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        statusCard.addView(overallStatus);
-        bridgeStatus = statusRow(false);
-        statusCard.addView(bridgeStatus);
-        audioStatus = statusRow(false);
-        statusCard.addView(audioStatus);
-        wheelStatus = statusRow(false);
-        statusCard.addView(wheelStatus);
-        notificationStatus = statusRow(false);
-        statusCard.addView(notificationStatus);
-        playerStatus = statusRow(false);
-        statusCard.addView(playerStatus);
-        layout.addView(statusCard, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        setContentView(root);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.setMargins(0, dp(16), 0, 0);
-        layout.addView(actions, actionsParams);
-
-        Button start = new Button(this);
-        start.setText("Start bridge");
-        start.setOnClickListener(view -> startBridge());
-        actions.addView(start, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-
-        Button stop = new Button(this);
-        stop.setText("Stop bridge");
-        stop.setOnClickListener(view -> stopBridge());
-        actions.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-
-        notificationAccess = new Button(this);
-        notificationAccess.setText("Enable notification access");
-        notificationAccess.setOnClickListener(view ->
-                startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
-        layout.addView(notificationAccess, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        verifyWheel = new Button(this);
-        verifyWheel.setText("Verify wheel controls");
-        verifyWheel.setOnClickListener(view -> startWheelVerification());
-        layout.addView(verifyWheel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView instructions = new TextView(this);
-        instructions.setText(
-                "\nIf switching between native Spotify and Android Auto, stop the previous "
-                        + "player so Android routes controls to the new active session.");
-        instructions.setTextColor(Color.rgb(155, 165, 173));
-        instructions.setTextSize(14);
-        layout.addView(instructions);
-
-        View spacer = new View(this);
-        layout.addView(spacer, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-
-        TextView version = new TextView(this);
-        version.setText("Version " + BuildConfig.VERSION_NAME);
-        version.setTextColor(Color.rgb(120, 130, 138));
-        version.setTextSize(12);
-        version.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        layout.addView(version);
-
-        setContentView(scrollView);
-        requestNotificationPermission();
-
-        SharedPreferences preferences =
-                getSharedPreferences(BridgeService.PREFS, MODE_PRIVATE);
-        if (!preferences.contains(BridgeService.KEY_ENABLED)
-                || preferences.getBoolean(BridgeService.KEY_ENABLED, false)) {
-            startBridge();
-        }
+        // Start the service so the callback registers and the current device is handled.
+        startForegroundService(new Intent(this, VolumeService.class));
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
-        handler.post(refreshStatus);
+    protected void onResume() {
+        super.onResume();
+        render();
     }
 
-    @Override
-    protected void onStop() {
-        handler.removeCallbacks(refreshStatus);
-        super.onStop();
-    }
-
-    private void renderStatus() {
-        SharedPreferences preferences =
-                getSharedPreferences(BridgeService.PREFS, MODE_PRIVATE);
-        String rawStatus = preferences.getString(BridgeService.KEY_STATUS, "Stopped");
-        boolean connected = rawStatus.startsWith("Connected");
-        boolean notificationEnabled = hasNotificationAccess();
-        long connectedAt = preferences.getLong(BridgeService.KEY_CONNECTED_AT, 0);
-        long lastWheelEventAt =
-                preferences.getLong(BridgeService.KEY_LAST_WHEEL_EVENT_AT, 0);
-        String lastWheelEvent =
-                preferences.getString(BridgeService.KEY_LAST_WHEEL_EVENT, "");
-        // Verification is an installation-level setup check, not a connection health check.
-        // Screenmate reconnects after a vehicle reboot, but that should not invalidate a
-        // previously successful wheel-control test.
-        boolean wheelVerified = connected && lastWheelEventAt > 0;
-
-        if (verificationFailed && connectedAt != verificationConnectionAt) {
-            verificationFailed = false;
-        }
-        if (verificationStartedAt > 0) {
-            if (!connected || connectedAt != verificationConnectionAt) {
-                verificationStartedAt = 0;
-                verificationFailed = false;
-            } else {
-                String currentFingerprint = mediaStateFingerprint(notificationEnabled);
-                boolean playerChanged =
-                        !currentFingerprint.equals(verificationPlayerFingerprint);
-                if (lastWheelEventAt >= verificationStartedAt || playerChanged) {
-                    if (playerChanged && lastWheelEventAt < verificationStartedAt) {
-                        lastWheelEventAt = System.currentTimeMillis();
-                        lastWheelEvent = "PLAYER_STATE_CHANGED";
-                        preferences.edit()
-                                .putLong(BridgeService.KEY_LAST_WHEEL_EVENT_AT, lastWheelEventAt)
-                                .putString(BridgeService.KEY_LAST_WHEEL_EVENT, lastWheelEvent)
-                                .apply();
-                    }
-                    wheelVerified = true;
-                    verificationStartedAt = 0;
-                    verificationFailed = false;
-                } else if (System.currentTimeMillis() - verificationStartedAt
-                        >= WHEEL_TEST_TIMEOUT_MS) {
-                    verificationStartedAt = 0;
-                    verificationFailed = true;
-                }
-            }
-        }
-
-        boolean everythingWorking = connected && notificationEnabled && wheelVerified;
-        if (everythingWorking) {
-            setStatus(overallStatus, "● Ready", true);
-        } else if (connected && verificationFailed) {
-            setStatus(overallStatus,
-                    "● Restart Screenmate",
-                    Color.rgb(255, 105, 97));
-        } else if (connected && notificationEnabled) {
-            setStatus(overallStatus, "● Verification needed", false);
-        } else {
-            setStatus(overallStatus, "● Action needed", false);
-        }
-        setStatus(bridgeStatus,
-                "● Bridge service: " + ("Stopped".equals(rawStatus) ? "STOPPED" : "RUNNING"),
-                !"Stopped".equals(rawStatus));
-        setStatus(audioStatus,
-                "● Screenmate audio: " + (connected ? "connected" : rawStatus),
-                connected);
-        if (verificationStartedAt > 0) {
-            long secondsLeft = Math.max(
-                    1,
-                    (WHEEL_TEST_TIMEOUT_MS
-                            - (System.currentTimeMillis() - verificationStartedAt)
-                            + 999) / 1_000);
-            setStatus(wheelStatus,
-                    "● Wheel controls: press play/pause now (" + secondsLeft + "s)",
-                    false);
-        } else if (verificationFailed) {
-            setStatus(wheelStatus,
-                    "● Wheel controls: no event detected — restart Screenmate",
-                    Color.rgb(255, 105, 97));
-        } else if (wheelVerified) {
-            setStatus(wheelStatus,
-                    "● Wheel controls: verified"
-                            + (lastWheelEvent.isEmpty() ? "" : " (" + lastWheelEvent + ")"),
-                    true);
-        } else {
-            setStatus(wheelStatus,
-                    "● Wheel controls: " + (connected ? "not verified" : "unavailable"),
-                    false);
-        }
-        setStatus(notificationStatus,
-                "● Notification access: " + (notificationEnabled ? "granted" : "required"),
-                notificationEnabled);
-
-        String activePlayer = findActivePlayer(notificationEnabled);
-        setStatus(playerStatus,
-                "● Active player: " + activePlayer,
-                !"none".equals(activePlayer));
-        notificationAccess.setVisibility(notificationEnabled ? View.GONE : View.VISIBLE);
-        verifyWheel.setVisibility(
-                connected && !wheelVerified ? View.VISIBLE : View.GONE);
-        verifyWheel.setEnabled(verificationStartedAt == 0);
-        verifyWheel.setText(
-                verificationStartedAt > 0
-                        ? "Waiting for wheel input…"
-                        : verificationFailed
-                                ? "Test wheel controls again"
-                                : "Verify wheel controls");
-    }
-
-    private void startWheelVerification() {
-        SharedPreferences preferences =
-                getSharedPreferences(BridgeService.PREFS, MODE_PRIVATE);
-        String rawStatus = preferences.getString(BridgeService.KEY_STATUS, "Stopped");
-        if (!rawStatus.startsWith("Connected")) {
+    private void render() {
+        AudioManager audioManager = getSystemService(AudioManager.class);
+        if (audioManager == null) {
+            setStatus(deviceRow, "Audio service unavailable", WARN);
+            setStatus(volumeRow, "", MUTED);
             return;
         }
-        verificationStartedAt = System.currentTimeMillis();
-        verificationConnectionAt =
-                preferences.getLong(BridgeService.KEY_CONNECTED_AT, 0);
-        verificationPlayerFingerprint = mediaStateFingerprint(hasNotificationAccess());
-        verificationFailed = false;
-        renderStatus();
-    }
 
-    private String mediaStateFingerprint(boolean notificationEnabled) {
-        if (!notificationEnabled) {
-            return "";
-        }
-        MediaSessionManager manager = getSystemService(MediaSessionManager.class);
-        if (manager == null) {
-            return "";
-        }
-        try {
-            List<String> states = new ArrayList<>();
-            for (MediaController controller : manager.getActiveSessions(
-                    new ComponentName(this, BridgeNotificationListener.class))) {
-                if (getPackageName().equals(controller.getPackageName())) {
-                    continue;
-                }
-                PlaybackState state = controller.getPlaybackState();
-                MediaMetadata metadata = controller.getMetadata();
-                String metadataFingerprint = metadata == null
-                        ? "none"
-                        : metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
-                                + ":"
-                                + metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
-                                + ":"
-                                + metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
-                states.add(
-                        controller.getPackageName()
-                                + ":"
-                                + (state == null ? "none" : state.getState())
-                                + ":"
-                                + metadataFingerprint);
-            }
-            Collections.sort(states);
-            return states.toString();
-        } catch (SecurityException ignored) {
-            return "";
-        }
-    }
-
-    private boolean hasNotificationAccess() {
-        String enabled = Settings.Secure.getString(
-                getContentResolver(), "enabled_notification_listeners");
-        if (enabled == null) {
-            return false;
-        }
-        String listener = new ComponentName(this, BridgeNotificationListener.class).flattenToString();
-        for (String component : enabled.split(":")) {
-            if (listener.equals(component)) {
-                return true;
+        boolean attached = false;
+        for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            if (VolumeService.isTeslAuxSink(device)) {
+                attached = true;
+                break;
             }
         }
-        return false;
+        int volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+
+        setStatus(deviceRow,
+                attached ? "TeslAux audio device connected" : "TeslAux audio device not connected",
+                attached ? OK : MUTED);
+        setStatus(volumeRow,
+                "Music volume " + volume + " of " + max,
+                volume >= max ? OK : WARN);
     }
 
-    private String findActivePlayer(boolean notificationEnabled) {
-        if (!notificationEnabled) {
-            return "unknown";
-        }
-        MediaSessionManager manager = getSystemService(MediaSessionManager.class);
-        if (manager == null) {
-            return "none";
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                String mediaKeyPackage = manager.getMediaKeyEventSessionPackageName();
-                if (mediaKeyPackage != null
-                        && !mediaKeyPackage.isEmpty()
-                        && !getPackageName().equals(mediaKeyPackage)) {
-                    return playerName(mediaKeyPackage);
-                }
-            }
-            List<MediaController> sessions = manager.getActiveSessions(
-                    new ComponentName(this, BridgeNotificationListener.class));
-            MediaController paused = null;
-            for (MediaController controller : sessions) {
-                if (getPackageName().equals(controller.getPackageName())) {
-                    continue;
-                }
-                PlaybackState state = controller.getPlaybackState();
-                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                    return playerName(controller.getPackageName());
-                }
-                if (paused == null
-                        && state != null
-                        && state.getState() == PlaybackState.STATE_PAUSED) {
-                    paused = controller;
-                }
-            }
-            if (paused != null) {
-                return playerName(paused.getPackageName()) + " (paused)";
-            }
-        } catch (SecurityException ignored) {
-            return "unknown";
-        }
-        return "none";
-    }
-
-    private String playerName(String packageName) {
-        if ("com.spotify.music".equals(packageName)) {
-            return "Spotify";
-        }
-        if ("com.andrerinas.headunitrevived".equals(packageName)) {
-            return "Android Auto";
-        }
-        if ("org.videolan.vlc".equals(packageName)) {
-            return "VLC";
-        }
-        return packageName;
-    }
-
-    private TextView statusRow(boolean prominent) {
-        TextView row = new TextView(this);
-        row.setTextSize(prominent ? 16 : 15);
-        row.setPadding(0, dp(prominent ? 12 : 7), 0, 0);
-        return row;
-    }
-
-    private void setStatus(TextView view, String text, boolean healthy) {
-        setStatus(
-                view,
-                text,
-                healthy ? Color.rgb(94, 218, 137) : Color.rgb(255, 184, 77));
+    private TextView row(LinearLayout parent, int topMargin) {
+        TextView view = new TextView(this);
+        view.setTextSize(17);
+        view.setTextColor(TEXT);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = topMargin;
+        parent.addView(view, params);
+        return view;
     }
 
     private void setStatus(TextView view, String text, int color) {
@@ -441,25 +120,5 @@ public final class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
-    private void startBridge() {
-        startForegroundService(new Intent(this, BridgeService.class));
-    }
-
-    private void stopBridge() {
-        getSharedPreferences(BridgeService.PREFS, MODE_PRIVATE)
-                .edit()
-                .putBoolean(BridgeService.KEY_ENABLED, false)
-                .apply();
-        stopService(new Intent(this, BridgeService.class));
-    }
-
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
-        }
     }
 }
